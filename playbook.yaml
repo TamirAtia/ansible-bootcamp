@@ -1,0 +1,82 @@
+- hosts: all
+  become: yes
+  gather_facts: no
+
+  vars_files:
+    - vars
+
+  tasks:
+
+  - name: Clone a github repository
+    git:
+      repo: https://github.com/TamirAtia/bootcamp-app
+      dest: /home/tamir/bootcamp-app
+      clone: yes
+      update: yes
+
+  - name: install node
+    shell: |
+      curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash - && sudo apt-get install -y nodejs
+
+  - name: install pm2
+    npm:
+      name: pm2
+      global: yes
+
+  - name: install pm2 startup
+    shell: pm2 startup && sudo env PATH=$PATH:/usr/bin /usr/lib/node_modules/pm2/bin/pm2 startup systemd -u adminuser --hp /home/tamir
+
+  - name: Install packages based on package.json using the npm
+    npm:
+      path: /home/tamir/bootcamp-app
+      state: present
+
+  - name: create .env file
+    copy:
+       dest: "/home/tamir/bootcamp-app/.env"
+       content: |
+           # Host Configurations
+           PORT=8080
+           HOST=0.0.0.0
+
+           HOST_URL=http://{{host}}:8080
+           COOKIE_ENCRYPT_PWD=superAwesomePasswordStringThatIsAtLeast32CharactersLong!
+           NODE_ENV=development
+
+           # Okta configuration
+
+           OKTA_ORG_URL=https://{{okta_url}}
+           OKTA_CLIENT_ID={{okta_client_id}}
+           OKTA_CLIENT_SECRET={{okta_client_secret}}
+
+           # Postgres Configurations
+
+           PGHOST={{pghost}}
+           PGUSERNAME={{pg_username}}
+           PGDATABASE=postgres
+           PGPASSWORD={{pg_password}}
+           PGPORT=5432
+
+
+  - name: run initdb script
+    shell: cd /home/tamir/bootcamp-app && npm run initdb
+    register: initdb
+    tags:
+      - initdb
+
+  - debug: msg = "{{ initdb.stdout }}"
+    tags:
+      - initdb
+
+  - name: run app as pm2 process
+    shell: cd /home/tamir/bootcamp-app && pm2 start src/index.js
+    register: out
+    tags:
+      - run
+
+  - debug: var=out.stdout_lines
+
+
+  - name: save process to run at start app
+    shell: pm2 save
+                                                
